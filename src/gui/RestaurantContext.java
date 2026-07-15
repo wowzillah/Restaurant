@@ -1,16 +1,11 @@
 package gui;
 
-import model.Employee;
-import model.MenuItem;
-import model.Order;
-import model.Table;
+import model.*;
 import model.enums.MenuCategory;
+import model.enums.MenuStatus;
 import model.enums.Role;
 import persistence.PersistenceManager;
-import service.EmployeeService;
-import service.MenuService;
-import service.OrderService;
-import service.TableService;
+import service.*;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,6 +16,7 @@ public class RestaurantContext {
     private final TableService tableService;
     private final OrderService orderService;
     private final PersistenceManager persistenceManager;
+    private final InventoryService inventoryService;
 
     //in order to track employees already logged in
     private Employee currentLoggedInUser;
@@ -30,7 +26,8 @@ public class RestaurantContext {
     private static final String MENU_FILE = "menu.dat";
     private static final String TABLES_FILE = "tables.dat";
     private static final String ORDERHISTORY_FILE = "history.dat";
-    private static final String ACTIVE_ORDERS_FILE = "active_orders.dat";
+  //  private static final String ACTIVE_ORDERS_FILE = "active_orders.dat";
+    private static final String INVENTORY_FILE = "inventory.dat";
 
     public RestaurantContext(){
         this.employeeService = new EmployeeService();
@@ -38,6 +35,7 @@ public class RestaurantContext {
         this.tableService = new TableService();
         this.orderService = new OrderService();
         this.persistenceManager = new PersistenceManager();
+        this.inventoryService = new InventoryService();
 
         initializeData();
     }
@@ -59,6 +57,7 @@ public class RestaurantContext {
         persistenceManager.saveToFile(TABLES_FILE, tableService.getTables());
         persistenceManager.saveToFile(ORDERHISTORY_FILE, orderService.getOrderHistory());
         //persistenceManager.saveToFile(ACTIVE_ORDERS_FILE, orderService.getActiveOrders());
+        persistenceManager.saveToFile(INVENTORY_FILE, inventoryService.getInventory());
     }
 
     private void seedMockData() {
@@ -74,11 +73,25 @@ public class RestaurantContext {
         tableService.addTable(new Table(4, 4, 6)); // Table #4 (6-top)
 
         // 3. Seed Menu Items
-        menuService.addMenuItem(new MenuItem(1, "French Onion Soup", "Classic soup with melted Gruyère", 8.50, MenuCategory.STARTER));
-        menuService.addMenuItem(new MenuItem(2, "Smoked Sausage & Beans", "Southern style slow-cooked beans", 16.00, MenuCategory.MAIN_COURSE));
-        menuService.addMenuItem(new MenuItem(3, "Noisette d'Agneau", "Pan-seared lamb loin with herbs", 24.50, MenuCategory.MAIN_COURSE));
-        menuService.addMenuItem(new MenuItem(4, "Crème Brûlée", "Rich vanilla custard with caramelized sugar", 7.00, MenuCategory.DESSERT));
-        menuService.addMenuItem(new MenuItem(5, "Red Wine (Glass)", "Bordeaux house red", 6.50, MenuCategory.BEVERAGE));
+        menuService.addMenuItem(new MenuItem(1, "French Onion Soup", "Classic soup with melted Gruyère", 8.50, MenuStatus.APPROVED,MenuCategory.STARTER));
+        menuService.addMenuItem(new MenuItem(2, "Smoked Sausage & Beans", "Southern style slow-cooked beans", 16.00,MenuStatus.APPROVED, MenuCategory.MAIN_COURSE));
+        menuService.addMenuItem(new MenuItem(3, "Noisette d'Agneau", "Pan-seared lamb loin with herbs", 24.50, MenuStatus.APPROVED,MenuCategory.MAIN_COURSE));
+        menuService.addMenuItem(new MenuItem(4, "Crème Brûlée", "Rich vanilla custard with caramelized sugar", 7.00,MenuStatus.APPROVED, MenuCategory.DESSERT));
+        menuService.addMenuItem(new MenuItem(5, "Red Wine (Glass)", "Bordeaux house red", 6.50, MenuStatus.APPROVED,MenuCategory.BEVERAGE));
+        // 4. Seed Inventory & Recipes (Add this to the bottom of seedMockData)
+        Ingredient onion = new model.Ingredient(1, "Yellow Onions", 10, 5, 0.50);
+        Ingredient gruyere = new model.Ingredient(2, "Gruyere Cheese", 1, 3, 2.00); // CRITICAL: Only 1 left in stock!
+
+        inventoryService.addIngredient(onion);
+        inventoryService.addIngredient(gruyere);
+
+// Attach the recipe to the French Onion Soup (Item ID 1)
+        java.util.Optional<MenuItem> soupOpt = menuService.getItemById(1);
+        if (soupOpt.isPresent()) {
+            MenuItem soup = soupOpt.get();
+            soup.addIngredientToRecipe(onion, 2);    // Takes 2 onions
+            soup.addIngredientToRecipe(gruyere, 1);  // Takes 1 cheese
+        }
     }
 
     // Getters for our Services
@@ -93,6 +106,7 @@ public class RestaurantContext {
 
 
     private boolean loadAllData() {
+
         Optional<List<Employee>> loadedEmployees = persistenceManager.loadFromFile(EMPLOYEES_FILE);
         Optional<List<MenuItem>> loadedMenu = persistenceManager.loadFromFile(MENU_FILE);
         Optional<List<Table>> loadedTables = persistenceManager.loadFromFile(TABLES_FILE);
@@ -100,10 +114,11 @@ public class RestaurantContext {
         //Optional<List<Order>> loadedActiveOrders = persistenceManager.loadFromFile(ACTIVE_ORDERS_FILE);
         boolean foundData = false;
 
-       // if (loadedActiveOrders.isPresent()) {
-       //     orderService.setActiveOrders(loadedActiveOrders.get());
-       //     foundData = true;
-       // }
+        Optional<List<Ingredient>> loadedInventory = persistenceManager.loadFromFile(INVENTORY_FILE);
+        if (loadedInventory.isPresent()) {
+            inventoryService.setInventory(loadedInventory.get());
+            foundData = true;
+        }
 
         if (loadedEmployees.isPresent()) {
             employeeService.setEmployees(loadedEmployees.get());
@@ -132,5 +147,9 @@ public class RestaurantContext {
         }
 
         return foundData;
+    }
+
+    public InventoryService getInventoryService() {
+        return inventoryService;
     }
 }
