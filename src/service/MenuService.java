@@ -32,8 +32,18 @@ public class MenuService {
     public List<MenuItem> getAvailableItemsByCategory(MenuCategory category){
         return menuCatalog.stream()
                 .filter(MenuItem::isAvailable)
+                .filter(item -> item.getStatus() == model.enums.MenuStatus.APPROVED) // THE BARRIER
                 .filter(item -> item.getCategory() == category)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     *  For the Manager's Inbox. Retrieves all items waiting for review.
+     */
+    public List<MenuItem> getPendingProposals() {
+        return menuCatalog.stream()
+                .filter(item -> item.getStatus() == model.enums.MenuStatus.DRAFT)
+                .collect(java.util.stream.Collectors.toList());
     }
 
     public void setItemAvailability(int itemId,boolean available){

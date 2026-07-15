@@ -1,9 +1,12 @@
 package model;
 
 import model.enums.MenuCategory;
+import model.enums.MenuStatus;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.Map;
 
 public class MenuItem implements Serializable {
 
@@ -15,14 +18,28 @@ public class MenuItem implements Serializable {
     private double price;
     private MenuCategory category;
     private boolean available;
+    private MenuStatus status;
 
-    public MenuItem(int id, String name, String description, double price, MenuCategory category) {
+    private Map<Ingredient, Integer> recipe;
+
+    public MenuItem(int id, String name, String description, double price, MenuStatus status, MenuCategory category) {
         this.id = id;
         this.name = name;
         this.description = description;
         this.price = price;
         this.category = category;
+        this.status = status;
         this.available = true;
+
+        this.recipe = new HashMap<>();
+    }
+
+    public void addIngredientToRecipe(Ingredient ingredient, int quantityRequired) {
+        recipe.put(ingredient, quantityRequired);
+    }
+
+    public Map<Ingredient, Integer> getRecipe() {
+        return recipe;
     }
 
     public int getId() {
@@ -64,6 +81,14 @@ public class MenuItem implements Serializable {
 
     public boolean isAvailable() {
         return available;
+    }
+
+    public MenuStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(MenuStatus status) {
+        this.status = status;
     }
 
     public void setAvailable(boolean available) {

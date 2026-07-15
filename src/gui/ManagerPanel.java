@@ -15,7 +15,8 @@ public class ManagerPanel extends JPanel {
     //Table Models for auto-refreshing UI
     private DefaultTableModel staffTableModel;
     private DefaultTableModel menuTableModel;
-
+    private DefaultTableModel tableTableModel;
+    private DefaultTableModel inventoryTableModel;
     //Financial Dashboard Labels
     private JLabel totalRevenueLabel;
     private JLabel totalOrdersLabel;
@@ -25,6 +26,7 @@ public class ManagerPanel extends JPanel {
         this.context = context;
 
         setupUI();
+        refreshAllViews();
     }
 
     private void setupUI() {
@@ -59,6 +61,8 @@ public class ManagerPanel extends JPanel {
 
         tabbedPane.addTab("👥 Staff Management", createStaffTab());
         tabbedPane.addTab("🍔 Menu Engineering", createMenuTab());
+        tabbedPane.addTab("🪑 Floor Management", createTableTab());
+        tabbedPane.addTab("📦 Inventory Management", createInventoryTab()); // NEW TAB!
         tabbedPane.addTab("📈 Financial Analytics", createAnalyticsTab());
 
         add(tabbedPane, BorderLayout.CENTER);
@@ -170,7 +174,7 @@ public class ManagerPanel extends JPanel {
                 MenuCategory cat = (MenuCategory) catBox.getSelectedItem();
 
                 int newId = context.getMenuService().getMenuCatalog().size() + 1;
-                MenuItem newItem = new MenuItem(newId, name, desc, price, cat);
+                MenuItem newItem = new MenuItem(newId, name, desc, price, MenuStatus.APPROVED, cat);
                 context.getMenuService().addMenuItem(newItem);
                 context.saveAllData(); // Persist to menu.dat!
                 refreshAllViews();
@@ -209,6 +213,23 @@ public class ManagerPanel extends JPanel {
      * Refreshes UI tables and financial numbers.
      */
     public void refreshAllViews() {
+
+        // Refresh Inventory Grid
+        if (inventoryTableModel != null) {
+            inventoryTableModel.setRowCount(0);
+            for (Ingredient i : context.getInventoryService().getInventory()) {
+                // Smart UI: Add a visual warning flag if stock is low!
+                String stockDisplay = i.getStockQuantity() + (i.isLowStock() ? "  ⚠️ LOW" : "");
+
+                inventoryTableModel.addRow(new Object[]{
+                        i.getId(),
+                        i.getName(),
+                        stockDisplay,
+                        i.getLowStockThreshold(),
+                        String.format("%.2f", i.getUnitCost())
+                });
+            }
+        }
         // Refresh Staff
         staffTableModel.setRowCount(0);
         for (Employee emp : context.getEmployeeService().getEmployees()) {
@@ -220,12 +241,192 @@ public class ManagerPanel extends JPanel {
         for (MenuItem item : context.getMenuService().getMenuCatalog()) {
             menuTableModel.addRow(new Object[]{item.getId(), item.getName(), item.getCategory(), String.format("%.2f", item.getPrice())});
         }
+        // 🪑 REFRESH FLOOR TABLES
+        if (tableTableModel != null) {
+            tableTableModel.setRowCount(0);
+            for (model.Table t : context.getTableService().getTables()) {
+                tableTableModel.addRow(new Object[]{
+                        t.getTableNumber(),
+                        t.getCapacity(),
+                        t.getStatus()
+                });
+            }
+        }
 
         // Refresh Financials
         double totalRev = context.getOrderService().getTotalRevenue();
         int totalChecks = context.getOrderService().getOrderHistory().size();
         totalRevenueLabel.setText("$" + String.format("%.2f", totalRev));
         totalOrdersLabel.setText(totalChecks + " Checks");
+    }
+
+    // ==========================================
+// TAB 3: FLOOR & TABLE MANAGEMENT
+// ==========================================
+    private JPanel createTableTab() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        String[] cols = {"Table Number", "Max Capacity (Guests)", "Current Status"};
+        tableTableModel = new DefaultTableModel(cols, 0) {
+            @Override public boolean isCellEditable(int row, int col) { return false; }
+        };
+        JTable tableGrid = new JTable(tableTableModel);
+        tableGrid.setRowHeight(25);
+        panel.add(new JScrollPane(tableGrid), BorderLayout.CENTER);
+
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+
+        JButton addTableBtn = new JButton("+ Add New Table");
+        addTableBtn.setBackground(new Color(102, 204, 102)); // Soft Green
+        addTableBtn.setForeground(Color.WHITE);
+        addTableBtn.addActionListener(e -> showAddTableDialog());
+
+        JButton removeTableBtn = new JButton("- Remove Selected Table");
+        removeTableBtn.setBackground(new Color(255, 153, 153)); // Soft Red
+        removeTableBtn.addActionListener(e -> handleRemoveTable(tableGrid));
+
+        btnPanel.add(addTableBtn);
+        btnPanel.add(removeTableBtn);
+        panel.add(btnPanel, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private void showAddTableDialog() {
+        JTextField numField = new JTextField();
+        JTextField capacityField = new JTextField();
+
+        Object[] form = {
+                "Table Number (e.g., 5):", numField,
+                "Number of Guests / Capacity:", capacityField
+        };
+
+        int result = JOptionPane.showConfirmDialog(this, form, "Add New Table", JOptionPane.OK_CANCEL_OPTION);
+        if (result == JOptionPane.OK_OPTION) {
+            try {
+                int tableNum = Integer.parseInt(numField.getText().trim());
+                int capacity = Integer.parseInt(capacityField.getText().trim());
+
+                if (capacity <= 0 || tableNum <= 0) {
+                    JOptionPane.showMessageDialog(this, "Table number and capacity must be positive numbers!");
+                    return;
+                }
+
+                // Prevent duplicate table numbers
+                if (context.getTableService().getTableByNumber(tableNum).isPresent()) {
+                    JOptionPane.showMessageDialog(this, "Table #" + tableNum + " already exists!");
+                    return;
+                }
+
+                model.Table newTable = new model.Table(tableNum, tableNum, capacity);
+                context.getTableService().addTable(newTable);
+                context.saveAllData(); // Save to tables.dat!
+                refreshAllViews();
+
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Please enter valid whole numbers!");
+            }
+        }
+    }
+
+    private void handleRemoveTable(JTable tableGrid) {
+        int selectedRow = tableGrid.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Please select a table to remove!");
+            return;
+        }
+
+        int tableNumber = (int) tableTableModel.getValueAt(selectedRow, 0);
+
+        int confirm = JOptionPane.showConfirmDialog(
+                this,
+                "Are you sure you want to permanently remove Table #" + tableNumber + "?",
+                "Remove Table",
+                JOptionPane.YES_NO_OPTION
+        );
+
+        if (confirm == JOptionPane.YES_OPTION) {
+            // Attempt to remove it (will return false if guests are sitting there!)
+            boolean removed = context.getTableService().removeTable(tableNumber);
+
+            if (removed) {
+                context.saveAllData();
+                refreshAllViews();
+                JOptionPane.showMessageDialog(this, "Table #" + tableNumber + " removed successfully.");
+            } else {
+                JOptionPane.showMessageDialog(this,
+                        "Cannot delete Table #" + tableNumber + " because it is currently OCCUPIED!\nClose the table's check first.",
+                        "Deletion Blocked",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+    // ==========================================
+// TAB 4: INVENTORY MANAGEMENT
+// ==========================================
+    private JPanel createInventoryTab() {
+        JPanel panel = new JPanel(new BorderLayout(10, 10));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        String[] cols = {"ID", "Ingredient Name", "Stock Level", "Warning Threshold", "Unit Cost ($)"};
+        inventoryTableModel = new DefaultTableModel(cols, 0) {
+            @Override
+            public boolean isCellEditable(int row, int col) {
+                return false;
+            }
+        };
+        JTable invTable = new JTable(inventoryTableModel);
+        invTable.setRowHeight(25);
+        panel.add(new JScrollPane(invTable), BorderLayout.CENTER);
+
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JButton addStockBtn = new JButton("+ Register New Ingredient");
+        addStockBtn.setBackground(new Color(102, 204, 102));
+        addStockBtn.setForeground(Color.WHITE);
+        addStockBtn.addActionListener(e -> showAddStockDialog());
+
+        btnPanel.add(addStockBtn);
+        panel.add(btnPanel, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private void showAddStockDialog() {
+        JTextField nameField = new JTextField();
+        JTextField stockField = new JTextField();
+        JTextField thresholdField = new JTextField();
+        JTextField costField = new JTextField();
+
+        Object[] form = {
+                "Ingredient Name (e.g., Ground Beef):", nameField,
+                "Initial Stock Quantity:", stockField,
+                "Low Stock Warning Threshold:", thresholdField,
+                "Cost per Unit ($):", costField
+        };
+
+        int result = JOptionPane.showConfirmDialog(this, form, "Add New Ingredient", JOptionPane.OK_CANCEL_OPTION);
+        if (result == JOptionPane.OK_OPTION) {
+            try {
+                String name = nameField.getText().trim();
+                int stock = Integer.parseInt(stockField.getText().trim());
+                int threshold = Integer.parseInt(thresholdField.getText().trim());
+                double cost = Double.parseDouble(costField.getText().trim());
+
+                if (name.isEmpty() || stock < 0 || threshold < 0 || cost < 0) {
+                    JOptionPane.showMessageDialog(this, "Fields cannot be empty and numbers must be positive!");
+                    return;
+                }
+
+                int newId = context.getInventoryService().getInventory().size() + 1;
+                Ingredient newIng = new Ingredient(newId, name, stock, threshold, cost);
+
+                context.getInventoryService().addIngredient(newIng);
+                context.saveAllData(); // Save to disk!
+                refreshAllViews();
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Please enter valid numbers for stock, threshold, and cost!");
+            }
+        }
     }
 
     @Override

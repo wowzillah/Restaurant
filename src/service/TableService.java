@@ -58,4 +58,25 @@ public class TableService {
     public List<Table> getTables() {
         return this.tables;
     }
+
+    /**
+     * Safely removes a table from the restaurant floor.
+     * Returns false if the table is currently OCCUPIED or doesn't exist.
+     */
+    public boolean removeTable(int tableNumber) {
+        java.util.Optional<model.Table> target = getTableByNumber(tableNumber);
+
+        if (target.isPresent()) {
+            model.Table table = target.get();
+
+            // SAFETY CHECK: Prevent deleting tables with active dining guests!
+            if (table.getStatus() == model.enums.TableStatus.OCCUPIED) {
+                return false;
+            }
+
+            tables.remove(table);
+            return true; // Successfully removed
+        }
+        return false; // Table wasn't found
+    }
 }

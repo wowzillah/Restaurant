@@ -142,15 +142,42 @@ public class POSOrderPanel extends JPanel {
     }
 
     private JButton createMenuItemButton(MenuItem item) {
-        String htmlText = "<html><center>"
-                + "<b>" + item.getName() + "</b><br><br>"
-                + "<font color='blue'>$" + String.format("%.2f", item.getPrice()) + "</font>"
-                + "</center></html>";
+        // Keep our nice square button formatting from earlier!
+        JButton btn = new JButton("<html><center>" + item.getName() + "<br>$" + String.format("%.2f", item.getPrice()) + "</center></html>");
+        btn.setPreferredSize(new Dimension(120, 100));
 
-        JButton btn = new JButton(htmlText);
-        btn.setFont(new Font("Arial", Font.PLAIN, 14));
-        btn.setFocusPainted(false);
-        btn.addActionListener(e -> handleAddItem(item));
+        btn.addActionListener(e -> {
+            if (activeOrder == null) {
+                JOptionPane.showMessageDialog(this, "Please select a table and open an order first!");
+                return;
+            }
+
+            // 1. HARD STOP: Out of Stock Check!
+            if (!context.getInventoryService().canCook(item)) {
+                JOptionPane.showMessageDialog(this,
+                        "⚠️ Cannot add " + item.getName() + " - Ingredients are OUT OF STOCK!",
+                        "Inventory Error",
+                        JOptionPane.ERROR_MESSAGE);
+                return; // Stop execution right here. The item is NOT added to the ticket.
+            }
+
+            // 2. SOFT WARNING: Low Stock Check
+            if (context.getInventoryService().isStockLowFor(item)) {
+                JOptionPane.showMessageDialog(this,
+                        "Heads up: Ingredients for " + item.getName() + " are running critically low.",
+                        "Low Stock Warning",
+                        JOptionPane.WARNING_MESSAGE);
+            }
+
+            // 3. Add to order & deduct the raw ingredients from the freezer
+            context.getOrderService().addItemToOrder(activeOrder, item, 1, "");
+            context.getInventoryService().deductStockFor(item);
+
+            // 4. Save the new stock levels and refresh the UI
+            context.saveAllData();
+            refreshTicketView();
+        });
+
         return btn;
     }
 
